@@ -16,6 +16,9 @@ import { BarCodeScanner } from 'expo-barcode-scanner';
 import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { API_CONFIG } from './config'; 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 
 // Kigali's approximate latitude and longitude
 const KIGALI_LATITUDE = -1.94407;
@@ -97,17 +100,25 @@ export default function QRScannerScreen() {
   const handleBarCodeScanned = async ({ type, data }) => {
     setScanned(true);
     setIsLoading(true);
-
+  
     try {
       console.log('Scanned data:', data);
-
+  
       if (typeof data !== 'string' || data.length === 0) {
         throw new Error('QR code data is not valid.');
       }
-
+  
       const qrIdentifier = data;
       console.log('Parsed QR Identifier:', qrIdentifier);
-
+  
+      // Retrieve the logged-in teacher's ID from AsyncStorage
+      const loggedInTeacherId = await AsyncStorage.getItem('teacher_id');
+      if (!loggedInTeacherId) {
+        throw new Error('Teacher ID not found. Please login again.');
+      }
+  
+      console.log('Logged-in Teacher ID:', loggedInTeacherId);
+  
       const distance = calculateDistance(
         location?.coords.latitude,
         location?.coords.longitude,
@@ -115,34 +126,38 @@ export default function QRScannerScreen() {
         KIGALI_LONGITUDE
       );
       console.log('Distance from Kigali:', distance);
-
+  
       if (distance > KIGALI_RADIUS) {
         Alert.alert('Location Error', 'You must be within the Kigali area to mark attendance.');
         setIsLoading(false);
         return;
       }
-
-      const response = await fetch('http://192.168.1.69:5000/api/attendance/mark-qr-attendance', {
+  
+      // Send the scanned QR identifier to the backend and validate the teacher
+      const response = await fetch(`${API_CONFIG.BASE_URL}/attendance/mark-qr-attendance`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           identifier: qrIdentifier,
+          teacher_id: loggedInTeacherId, // Send the logged-in teacher's ID for comparison
           latitude: location?.coords.latitude,
           longitude: location?.coords.longitude,
         }),
       });
-
+  
       const responseData = await response.json();
       console.log('API response:', responseData);
-
+  
       if (response.ok) {
         if (responseData.error) {
           if (responseData.error === 'Attendance already recorded for this class.') {
             Alert.alert('Duplicate Entry', 'Attendance has already been recorded for this class.');
           } else if (responseData.error.includes('Attendance can only be marked between')) {
             Alert.alert('Class Time Error', responseData.error);
+          } else if (responseData.error === 'Teacher mismatch') {
+            Alert.alert('Error', 'You are not the same person as the teacher associated with this class.');
           }
         } else {
           Alert.alert('Success', 'Attendance marked successfully!');
@@ -157,7 +172,7 @@ export default function QRScannerScreen() {
       setIsLoading(false);
     }
   };
-
+  
   if (hasCameraPermission === null || hasLocationPermission === null) {
     return (
       <SafeAreaView style={styles.loadingContainer}>

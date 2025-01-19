@@ -14,6 +14,9 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { API_CONFIG } from './config'; 
+import AsyncStorage from '@react-native-async-storage/async-storage'; // Import AsyncStorage
+
 
 export default function TeacherLogin() {
   const [identifier, setIdentifier] = useState('');
@@ -29,44 +32,40 @@ export default function TeacherLogin() {
 
     setLoading(true);
 
-    console.log('Logging in with credentials:', { identifier, password });
-
     const credentials = { identifier, password };
 
     try {
-      const response = await fetch('http://192.168.1.69:5000/api/auth/login', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credentials),
       });
 
-      console.log('Response received:', response);
-
       const data = await response.json();
-      console.log('Response data:', data);
 
       if (response.ok) {
         if (data.role === 'teacher') {
+          // Store the token, role, and id in AsyncStorage
+          await AsyncStorage.setItem('teacher_token', data.token);
+          await AsyncStorage.setItem('teacher_id', data.id.toString()); // Convert id to string for AsyncStorage
+          await AsyncStorage.setItem('teacher_role', data.role);
+
           Alert.alert('Success', 'Login successful');
-          console.log('Login successful, navigating to QRScanner...');
           navigation.navigate('QRScanner');
         } else {
           Alert.alert('Error', 'This login is for teachers only.');
-          console.log('Login failed, user is not a teacher:', data.role);
         }
       } else {
         Alert.alert('Error', data.error || 'Login failed');
-        console.log('Login failed, error:', data.error || 'Unknown error');
       }
     } catch (error) {
       Alert.alert('Error', 'An error occurred during login.');
       console.error('Error during login:', error);
     } finally {
       setLoading(false);
-      console.log('Login process finished');
     }
   };
-
+  
   return (
     <ImageBackground
       source={require('../../assets/background.jpg')} // Make sure to add a suitable background image
